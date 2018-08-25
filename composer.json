@@ -20,14 +20,12 @@
   ],
   "require": {
     "devp-eu/tmcms-core": "dev-master",
-    "devp-eu/tmcms-panel": "dev-master"
+    "devp-eu/tmcms-panel": "dev-master",
+    "devp-eu/tmcms-module-settings": "dev-master"
   },
   "autoload": {
     "psr-4": {
       "TMCms\\Modules\\Currencies\\": "src"
     }
-  },
-  "require": {
-    "devp-eu/tmcms-module-settings": "dev-master"
   }
 }
