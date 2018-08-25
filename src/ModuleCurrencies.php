@@ -1,243 +1,57 @@
 <?php
+declare(strict_types=1);
 
-namespace TMCms\Modules\Settings;
+namespace TMCms\Modules\Currencies;
 
-use TMCms\Admin\Messages;
-use TMCms\Cache\Cacher;
-use TMCms\Config\Settings;
-use TMCms\HTML\Cms\CmsFormHelper;
-use TMCms\Log\App;
+use TMCms\Modules\Currencies\Entity\CurrencyEntity;
+use TMCms\Modules\Currencies\Entity\CurrencyEntityRepository;
 use TMCms\Modules\IModule;
-use TMCms\Modules\ModuleManager;
-use TMCms\Modules\Settings\Entity\Currency;
-use TMCms\Modules\Settings\Entity\CustomSettingOptionRepository;
-use TMCms\Modules\Settings\Entity\CurrencyRepository;
-use TMCms\Strings\Converter;
 use TMCms\Traits\singletonInstanceTrait;
 
-defined('INC') or exit;
+\defined('INC') or exit;
 
-class ModuleSettings implements IModule {
+/**
+ * Class ModuleCurrencies
+ *
+ * @package TMCms\Modules\Currencies
+ */
+class ModuleCurrencies implements IModule {
     use singletonInstanceTrait;
 
-    public static $tables = [
-        'settings' => 'm_settings',
-        'options'  => 'm_settings_options'
-    ];
-
-    private static $cached_settings = [];
+    public const DEFAULT_CURRENCY_CODE = 'EUR';
 
     /**
-     * @param string $module
-     * @param array  $predefined_fields
      * @return string
      */
-    public static function requireTableForExternalModule($module = P, $predefined_fields = [])
+    public static function getMainCurrencyCode(): string
     {
-        $data = new CurrencyRepository();
-        $data->setWhereModule($module);
-        $data->getAsArrayOfObjectData();
+        $currencies = new CurrencyEntityRepository();
+        $currencies->setWhereIsMain(1);
 
-        foreach ($data->getAsArrayOfObjectData() as $key => $field) {
-            // Any existing data
-            if (isset($predefined_fields[$field['key']])) {
-                $field = array_merge($predefined_fields[$field['key']], $field);
-            }
+        /** @var CurrencyEntity $currency */
+        $currency = $currencies->getFirstObjectFromCollection();
 
-            // Supplied data
-            if (!isset($field['module'])) {
-                $field['module'] = P;
-            }
-
-            $field['title'] = Converter::charsToNormalTitle($field['key']);
-            if (!isset($field['type']) || !$field['type']) {
-                $field['type'] = $field['input_type'];
-            }
-            $field['input_type'] = $field['type'];
-
-            $options_array = [];
-            if ($field['input_options'] && is_string($field['input_options'])) {
-                $options_array = json_decode($field['input_options'], JSON_OBJECT_AS_ARRAY);
-            }
-
-            // Validators and editors
-            if (isset($options_array['editor_wysiwyg'])) {
-                $field['edit'] = 'wysiwyg';
-            }
-            if (isset($options_array['editor_files'])) {
-                $field['edit'] = 'files';
-                $field['path'] = DIR_PUBLIC_URL;
-            }
-            if (isset($options_array['editor_pages'])) {
-                $field['edit'] = 'pages';
-            }
-            if (isset($options_array['editor_map'])) {
-                $field['edit'] = 'map';
-            }
-            if (isset($options_array['require'])) {
-                $field['required'] = true;
-                $field['validate']['require'] = true;
-            }
-            if (isset($options_array['is_digit'])) {
-                $field['validate']['is_digit'] = true;
-            }
-            if (isset($options_array['alphanum'])) {
-                $field['validate']['alphanum'] = true;
-            }
-            if (isset($options_array['url'])) {
-                $field['validate']['url'] = true;
-            }
-            if (isset($options_array['email'])) {
-                $field['validate']['email'] = true;
-            }
-
-            // Input Type
-            if ($field['input_type'] == 'select') {
-                $field['options'] = ModuleSettings::getSelectTypeSettingOption(P, $field['key']);
-            }
-
-            $predefined_fields[$field['key']] = $field;
+        if (!$currency) {
+            return self::DEFAULT_CURRENCY_CODE;
         }
 
-        if (!$predefined_fields) {
-            return false;
-        }
-
-        $form_array = [
-            'action' => '?p=' . P . '&do=_settings',
-            'button' => __('Update'),
-            'fields' => $predefined_fields
-        ];
-
-        return CmsFormHelper::outputForm(self::$tables['settings'],
-            $form_array
-        )
-            ->enableAjax();
+        return $currency->getCode();
     }
 
     /**
-     * @param string $module
-     * @param string $key
-     * @return array
+     * @param array $filters
+     *
+     * @return CurrencyEntityRepository
      */
-    private static function getSelectTypeSettingOption($module, $key)
+    public static function getCurrencies(?array $filters = []): CurrencyEntityRepository
     {
-        $setting = self::getCustomSetting($module, $key);
-        if (!$setting) {
-            return [];
+        $currencies = new CurrencyEntityRepository();
+        $currencies->enableUsingCache();
+
+        if (isset($filters['active'])) {
+            $currencies->setWhereActive((int)$filters['active']);
         }
 
-        $options = new CustomSettingOptionRepository;
-        $options->setWhereSettingId($setting->getId());
-
-        return $options->getPairs('option_name');
-    }
-
-    /**
-     * Get Setting object
-     * @param string $module
-     * @param string $key
-     * @return Currency
-     */
-    public static function getCustomSetting($module, $key)
-    {
-        if (!self::$cached_settings) {
-            // To prevent more iterations
-            self::$cached_settings['empty']['empty'] = '';
-
-            $settings = new CurrencyRepository;
-            foreach ($settings->getAsArrayOfObjects() as $setting) {
-                /** @var Currency $setting */
-                self::$cached_settings[$setting->getModule()][$setting->getKey()] = $setting;
-            }
-        }
-
-        if(!isset(self::$cached_settings[$module][$key])){
-            $item = new Currency();
-            $item->setModule($module)->setKey($key)->setInputType('text')->save();
-        }
-
-        return isset(self::$cached_settings[$module][$key]) ? self::$cached_settings[$module][$key] : NULL;
-    }
-
-    /**
-     * @param string $module
-     * @param array $predefined_fields use it to save checkboxes, because they all have value 0
-     */
-    public static function requireUpdateModuleSettings($module = P, $predefined_fields = [])
-    {
-        $settings = new CurrencyRepository();
-        $settings->setWhereModule(P);
-        $to_unset = $settings->getPairs('key');
-
-        // Update (create) settings
-        foreach ($_POST as $k => $v) {
-            // Check existing
-            /** @var Currency $setting */
-            $setting = CurrencyRepository::findOneEntityByCriteria([
-                'module' => $module,
-                'key'    => $k
-            ]);
-
-            if (!$setting) {
-                $setting = new Currency();
-                $setting->setModule($module);
-                $setting->setKey($k);
-            }
-
-            // Set 1 for checkboxes
-            if ((isset($predefined_fields[$k]) && $predefined_fields[$k]['type'] == 'checkbox' && !$v) || ($setting->getInputType() == 'checkbox' && !$v)) {
-                $v = 1;
-                $setting->setInputType('checkbox');
-            }
-
-            $setting->setValue($v);
-            $setting->save();
-
-            unset($to_unset[$setting->getId()]);
-        }
-
-        // Set 0 for unset checkboxes
-        foreach ($to_unset as $unset_id => $unset_key) {
-            $setting = new Currency($unset_id);
-            $setting->setValue(0);
-            $setting->save();
-        }
-
-        App::add('Setting in module "' . P . '" updated');
-        Messages::sendGreenAlert('Settings updated');
-
-        if (IS_AJAX_REQUEST) {
-            die('1');
-        }
-
-        back();
-    }
-
-    /**
-     * Get Value of Setting
-     * @param string $module
-     * @param string $key
-     * @return string
-     */
-    public static function getCustomSettingValue($module, $key) {
-        $setting = self::getCustomSetting($module, $key);
-        if ($setting) {
-            return $setting->getValue();
-        }
-
-        return NULL;
-    }
-
-    // Get Setting pairs
-
-    public static function getSettingsPairs($module = NULL) {
-        $fields = new CurrencyRepository();
-
-        if ($module) {
-            $fields->setWhereModule($module);
-        }
-
-        return $fields->getPairs('value', 'key');
+        return $currencies;
     }
 }

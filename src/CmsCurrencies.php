@@ -3,11 +3,15 @@ declare(strict_types=1);
 
 namespace TMCms\Modules\Currencies;
 
+use TMCms\Admin\Messages;
 use TMCms\HTML\BreadCrumbs;
+use TMCms\HTML\Cms\CmsForm;
 use TMCms\HTML\Cms\CmsFormHelper;
 use TMCms\HTML\Cms\CmsTableHelper;
+use TMCms\Log\App;
 use TMCms\Modules\Currencies\Entity\CurrencyEntity;
 use TMCms\Modules\Currencies\Entity\CurrencyEntityRepository;
+use TMCms\Modules\Settings\ModuleSettings;
 
 \defined('INC') or exit;
 
@@ -35,7 +39,7 @@ class CmsCurrencies
                 ],
                 $currencies::FIELD_RATE => [],
                 $currencies::FIELD_IS_MAIN => [
-                    'type' => CmsTableHelper::TYPE_CHECKBOX,
+                    'type' => CmsTableHelper::TYPE_ACTIVE,
                 ],
             ],
             'active' => true,
@@ -55,9 +59,9 @@ class CmsCurrencies
     /**
      * @param int? $currency_id
      *
-     * @return \TMCms\HTML\Cms\CmsForm
+     * @return CmsForm
      */
-    public function _add_edit_form(?int $currency_id = NULL): \TMCms\HTML\Cms\CmsForm
+    public function _add_edit_form(?int $currency_id = NULL): CmsForm
     {
         $currency = new CurrencyEntity($currency_id);
         $currencies = new CurrencyEntityRepository;
@@ -69,7 +73,7 @@ class CmsCurrencies
             'data' => $currency,
             'fields' => [
                 $currencies::FIELD_CODE => [
-                    'hint' => __('ISO code consists of 3 letter'),
+                    'hint' => __('ISO code consists of 3 letter, uppercase'),
                     'validate' => [
                         'required' => true,
                         'alphanum' => true,
@@ -91,5 +95,106 @@ class CmsCurrencies
                 ],
             ],
         ]);
+    }
+
+    public function _add(): void
+    {
+        $currency = new CurrencyEntity();
+        $currency->loadDataFromArray($_POST);
+        $currency->save();
+
+        App::add('Currency "' . $currency->getCode() . '" added');
+        Messages::sendMessage('Currency added');
+
+        go('?p='. P .'&highlight='. $currency->getId());
+    }
+
+    public function edit(): void
+    {
+        $currency = new CurrencyEntity($_GET['id']);
+
+        BreadCrumbs::getInstance()
+            ->addCrumb('Edit Currency')
+            ->addCrumb($currency->getCode())
+        ;
+
+        echo $this->_add_edit_form($currency->getId());
+    }
+
+    public function _edit(): void
+    {
+        $currency = new CurrencyEntity($_GET['id']);
+        $currency->loadDataFromArray($_POST);
+        $currency->save();
+
+        App::add('Currency "' . $currency->getCode() . '" updated');
+        Messages::sendMessage('Currency updated');
+
+        go('?p='. P .'&highlight='. $currency->getId());
+    }
+
+    public function _is_main(): void
+    {
+        // Remove flag from all
+        $currencies = new CurrencyEntityRepository();
+        $currencies->setIsMain(0);
+        $currencies->save();
+
+        $currency = new CurrencyEntity($_GET['id']);
+        $currency->flipBoolValue(CurrencyEntityRepository::FIELD_IS_MAIN);
+        $currency->save();
+
+        App::add('Currency "' . $currency->getCode() . '" updated');
+        Messages::sendMessage('Currency updated');
+
+        exit(1);
+    }
+
+    public function _active(): void
+    {
+        $currency = new CurrencyEntity($_GET['id']);
+        $currency->flipBoolValue('active');
+        $currency->save();
+
+        App::add('Currency "' . $currency->getCode() . '" updated');
+        Messages::sendMessage('Currency updated');
+
+        exit(1);
+    }
+
+    public function _delete(): void
+    {
+        $currency = new CurrencyEntity($_GET['id']);
+
+        if ($currency->getIsMain()) {
+            \error('Main currency can not be deleted');
+        }
+
+        $currency->deleteObject();
+
+        App::add('Currency "' . $currency->getCode() . '" deleted');
+        Messages::sendMessage('Currency deleted');
+
+        back();
+    }
+
+    public function settings(): void
+    {
+        $predefined_settings = [
+            'exchange_tax' => [
+                'type' => CmsFormHelper::FIELD_TYPE_NUMBER,
+                'hint' => 'How much will be added for exchange in % from main currency',
+                'max' => 100,
+                'min' => 0.1,
+                'step' => 0.1,
+            ],
+        ];
+
+        echo ModuleSettings::requireTableForExternalModule(P, $predefined_settings);
+    }
+
+    public function _settings(): void
+    {
+        ModuleSettings::requireUpdateModuleSettings();
     }
 }

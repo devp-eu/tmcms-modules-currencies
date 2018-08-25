@@ -9,6 +9,8 @@ use TMCms\Orm\TableStructure;
 /**
  * Class CurrencyRepository
  *
+ * @method $this setIsMain(int $flag)
+ * @method $this setWhereActive(int $flag)
  * @method $this setWhereIsMain(int $flag)
  */
 class CurrencyEntityRepository extends EntityRepository {
@@ -16,6 +18,8 @@ class CurrencyEntityRepository extends EntityRepository {
     public const FIELD_NAME = 'name';
     public const FIELD_RATE = 'rate';
     public const FIELD_IS_MAIN = 'is_main';
+
+    protected $translation_fields = [self::FIELD_NAME];
 
     protected $table_structure = [
         'fields' => [
@@ -29,6 +33,9 @@ class CurrencyEntityRepository extends EntityRepository {
                 'type' => TableStructure::FIELD_TYPE_FLOAT_DECIMAL,
             ],
             self::FIELD_IS_MAIN => [
+                'type' => TableStructure::FIELD_TYPE_BOOL,
+            ],
+            'active' => [
                 'type' => TableStructure::FIELD_TYPE_BOOL,
             ],
         ],
