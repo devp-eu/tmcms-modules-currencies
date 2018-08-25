@@ -1,8 +1,9 @@
 <?php
+declare(strict_types=1);
 
 return [
     'title' => 'Currencies',
-    'icon' => 'currency',
+    'icon' => 'credit-card',
     'items' => [
         '_default' => [
             'title' => 'Main'
