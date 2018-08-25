@@ -24,7 +24,7 @@
   },
   "autoload": {
     "psr-4": {
-      "TMCms\\Modules\\Settings\\": "src"
+      "TMCms\\Modules\\Currencies\\": "src"
     }
   },
   "require": {
